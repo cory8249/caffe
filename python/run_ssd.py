@@ -11,12 +11,16 @@ import cv2
 import os
 import sys
 import caffe
+from config import *
 
 caffe.set_device(0)
 caffe.set_mode_gpu()
 
 # I/O Path
-if len(sys.argv) < 2:
+if len(sys.argv) == 1:
+    sys.argv.append(default_input_path)
+
+if len(sys.argv) != 2:
     print('run_ssd.py <input_video_path>')
     raise Exception
 
@@ -36,7 +40,7 @@ from caffe.proto import caffe_pb2
 # load PASCAL VOC / MSCOCO labels
 
 # labelmap_file = 'data/VOC0712/labelmap_voc.prototxt'
-labelmap_file = 'data/coco/labelmap_coco_minsun.prototxt'
+labelmap_file = '../data/coco/labelmap_coco_minsun.prototxt'
 
 file = open(labelmap_file, 'r')
 labelmap = caffe_pb2.LabelMap()
@@ -67,8 +71,8 @@ def get_labelname(labelmap, labels):
 # model_def = 'models/VGGNet/VOC0712/SSD_300x300/deploy.prototxt'
 # model_weights = 'models/VGGNet/VOC0712/SSD_300x300/VGG_VOC0712_SSD_300x300_iter_60000.caffemodel'
 
-model_def = 'models/VGGNet/coco/SSD_300x300/deploy.prototxt'
-model_weights = 'models/VGGNet/coco/SSD_300x300/VGG_coco_SSD_300x300_iter_240000.caffemodel'
+model_def = '../models/VGGNet/coco/SSD_300x300/deploy.prototxt'
+model_weights = '../models/VGGNet/coco/SSD_300x300/VGG_coco_SSD_300x300_iter_240000.caffemodel'
 
 net = caffe.Net(model_def,  # defines the structure of the model
                 model_weights,  # contains the trained weights

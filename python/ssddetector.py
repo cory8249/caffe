@@ -11,7 +11,6 @@
 from __future__ import print_function
 
 import os
-import sys
 import time
 
 import cv2
@@ -28,7 +27,8 @@ if not os.path.isfile('fhog_utils.so'):
     import fhog_utils
     fhog_utils.cc.compile()
     print('Done. please run again')
-    raise Exception
+    import sys
+    sys.exit(0)
 
 
 class SSDDetector:
