@@ -27,7 +27,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
         assert cap.isOpened()
         frames_count = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
     else:
-        files_in_dir = sorted([f for f in os.listdir(input_path) if os.path.isfile(os.path.join(input_v_path, f))])
+        files_in_dir = sorted([f for f in os.listdir(input_path) if os.path.isfile(os.path.join(input_path, f))])
         frames_count = len(files_in_dir)
 
     all_trackers = dict()
