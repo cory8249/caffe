@@ -61,6 +61,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
     # ============  main tracking loop  ============ #
     for current_frame in range(frames_count):
+        t0 = time()
         if input_mode == 'video':
             ret, frame = cap.read()
         else:
@@ -73,7 +74,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 print(current_frame_path)
             raise IOError
 
-        print('frame %d' % current_frame, end='')
+        print('frame %d: ' % current_frame)
 
         # select mode by current frame count (periodic prediction)
         init_tracking = (current_frame % detection_period == 0)
@@ -104,7 +105,6 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                                      'x1': x1, 'y1': y1, 'w': w, 'h': h, 'label': label}  # add to trackers' dict
 
         else:
-            t0 = time()
 
             # check old trackers
             # * every tracker life - 1
@@ -173,15 +173,14 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                         cv2.putText(frame, '%.2f' % pv, (bbox[0], bbox[1]),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                                     (255, 0, 0), 1)
+
+        if imshow_enable or imwrite_enable:
             t1 = time()
             duration_smooth = 0.8 * duration_smooth + 0.2 * (t1 - t0)
             fps = 1 / duration_smooth
             print(' fsp = %4f' % fps, end='')
-            if imshow_enable or imwrite_enable:
-                cv2.putText(frame, 'FPS: %.2f' % fps, (frame.shape[1] - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1,
-                            (0, 0, 255), 2)
-
-        if imshow_enable:
+            cv2.putText(frame, 'FPS: %.2f' % fps, (frame.shape[1] - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                        (0, 0, 255), 2)
             cv2.imshow('tracking', frame)
             c = cv2.waitKey(1) & 0xFF
             if c == 27 or c == ord('q'):
