@@ -1,6 +1,6 @@
 # coding: utf-8
 
-# # Detection with SSD
+# Detection with SSD
 
 from __future__ import print_function
 
@@ -10,11 +10,6 @@ import time
 import cv2
 import os
 import sys
-
-caffe_root = './'  # this file is expected to be in {caffe_root}
-os.chdir(caffe_root)
-sys.path.insert(0, 'python')
-
 import caffe
 
 caffe.set_device(0)
@@ -26,7 +21,7 @@ if len(sys.argv) < 2:
     raise Exception
 
 input_video = sys.argv[1]  # file or path both ok
-output_dir = 'ssd_output'
+output_dir = '../ssd_output'
 
 # Generate detection result image (for visualization)  It is much slower than pure SSD computation
 plot_enable = True

@@ -10,48 +10,51 @@
 
 from __future__ import print_function
 
-import numpy as np
-import matplotlib.pyplot as plt
-import time
-import cv2
 import os
 import sys
+import time
 
-sys.path.insert(0, 'python')  # to import local caffe python
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
 
 import caffe
 from google.protobuf import text_format
 from caffe.proto import caffe_pb2
 
-
 # compile first
 if not os.path.isfile('fhog_utils.so'):
+    print('numba compile ...')
     import fhog_utils
     fhog_utils.cc.compile()
+    print('Done. please run again')
+    raise Exception
 
 
 class SSDDetector:
     def __init__(self):
         caffe.set_device(0)
         caffe.set_mode_gpu()
-        labelmap_file = open('data/coco/labelmap_coco_minsun.prototxt', 'r')
+        labelmap_file = open('../data/coco/labelmap_coco_minsun.prototxt', 'r')
         self.labelmap = caffe_pb2.LabelMap()
         text_format.Merge(str(labelmap_file.read()), self.labelmap)
 
         # * Load the net in the test phase for inference, and configure input preprocessing.
-        model_def = 'models/VGGNet/coco/SSD_300x300/deploy.prototxt'
-        model_weights = 'models/VGGNet/coco/SSD_300x300/VGG_coco_SSD_300x300_iter_240000.caffemodel'
+        model_def = '../models/VGGNet/coco/SSD_300x300/deploy.prototxt'
+        model_weights = '../models/VGGNet/coco/SSD_300x300/VGG_coco_SSD_300x300_iter_240000.caffemodel'
 
         self.net = caffe.Net(model_def,  # defines the structure of the model
-                        model_weights,  # contains the trained weights
-                        caffe.TEST)  # use test mode (e.g., don't perform dropout)
+                             model_weights,  # contains the trained weights
+                             caffe.TEST)  # use test mode (e.g., don't perform dropout)
 
         # input pre-processing: 'data' is the name of the input blob == net.inputs[0]
         self.transformer = caffe.io.Transformer({'data': self.net.blobs['data'].data.shape})
         self.transformer.set_transpose('data', (2, 0, 1))
         self.transformer.set_mean('data', np.array([104, 117, 123]))  # mean pixel
-        self.transformer.set_raw_scale('data', 255)  # the reference model operates on images in [0,255] range instead of [0,1]
-        self.transformer.set_channel_swap('data', (2, 1, 0))  # the reference model has channels in BGR order instead of RGB
+        self.transformer.set_raw_scale('data',
+                                       255)  # the reference model operates on images in [0,255] range instead of [0,1]
+        self.transformer.set_channel_swap('data',
+                                          (2, 1, 0))  # the reference model has channels in BGR order instead of RGB
 
         # ### 2. SSD detection
         # Load an image. Set net to batch size of 1
@@ -79,7 +82,7 @@ class SSDDetector:
         img = frame / 255.0
         return img[:, :, (2, 1, 0)]
 
-    def detect(self, frame=None, conf_threshold=0.3):
+    def detect(self, frame=None, conf_threshold=0.5):
         # convert format
         image = self.rgb_to_caffe_input(frame)
         transformed_image = self.transformer.preprocess('data', image)
@@ -112,10 +115,14 @@ class SSDDetector:
 
         ret_array = list()
         for i in range(len(top_conf)):
-            det = {'label': top_labels[i], 'label_id': top_label_indices[i], 'conf': top_conf[i], 'id': i+1,
-               'x1': top_xmin[i], 'y1': top_ymin[i],
-               'x2': top_xmax[i], 'y2': top_ymax[i]}
-            ret_array.append(det)
+            det = {'label': top_labels[i], 'label_id': top_label_indices[i], 'conf': top_conf[i], 'id': i + 1,
+                   'x1': top_xmin[i], 'y1': top_ymin[i],
+                   'x2': top_xmax[i], 'y2': top_ymax[i]}
+            if ((top_xmax[i] - top_xmin[i]) > 0.5 * image.shape[1]) \
+                    or ((top_ymax[i] - top_ymin[i]) > 0.5 * image.shape[0]):
+                pass
+            else:
+                ret_array.append(det)
         return ret_array
 
     @staticmethod
@@ -143,7 +150,7 @@ class SSDDetector:
             score = det.get('conf')
             top_conf = det.get('conf')
             label_name = det.get('label')
-            label =det.get('label_id')
+            label = det.get('label_id')
             display_txt = '%s: %.2f' % (label_name, score)
             # print(display_txt, end=' ')
 

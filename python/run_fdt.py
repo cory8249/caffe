@@ -12,22 +12,9 @@ from util import *
 from detector import Detector
 
 
-if __name__ == '__main__':
+def fdt_main(input_path=None, label_file=None, data_format=None):
 
-    # ============   Usage: run.py <filename> <det_result>   ============ #
-
-    if len(sys.argv) == 1:
-        sys.argv.append(default_input_path)
-        sys.argv.append(default_det_path)
-        sys.argv.append(default_data_format)
-    assert len(sys.argv) == 4
-    if not os.path.exists('output'):
-        os.mkdir('output')
-
-    input_v_path = sys.argv[1]
-    label_file = sys.argv[2]
-    data_format = sys.argv[3]
-    if input_v_path.find('mp4') != -1:
+    if input_path.find('mp4') != -1:
         input_mode = 'video'
     else:
         input_mode = 'image'
@@ -36,16 +23,15 @@ if __name__ == '__main__':
     detector = Detector(pseudo=False, label_file=label_file, data_format=data_format)
 
     if input_mode == 'video':
-        cap = cv2.VideoCapture(input_v_path)
+        cap = cv2.VideoCapture(input_path)
         assert cap.isOpened()
         frames_count = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
     else:
-        files_in_dir = sorted([f for f in os.listdir(input_v_path) if os.path.isfile(os.path.join(input_v_path, f))])
+        files_in_dir = sorted([f for f in os.listdir(input_path) if os.path.isfile(os.path.join(input_v_path, f))])
         frames_count = len(files_in_dir)
 
     all_trackers = dict()
     tracker_valid = dict()
-    duration = 0.01
     duration_smooth = 0.01
     sum_pv = 0.0
     sum_iou = 0.0
@@ -56,7 +42,7 @@ if __name__ == '__main__':
         if input_mode == 'video':
             ret, frame = cap.read()
         else:
-            current_frame_path = input_v_path + '/%06d.jpg' % (current_frame + 1)
+            current_frame_path = input_path + '/%06d.jpg' % (current_frame + 1)
             frame = cv2.imread(current_frame_path)
 
         if frame is None:
@@ -68,9 +54,9 @@ if __name__ == '__main__':
         print('frame %d' % current_frame, end='')
 
         # select mode by current frame count (periodic prediction)
-        initTracking = (current_frame % detection_period == 0)
+        init_tracking = (current_frame % detection_period == 0)
 
-        if initTracking:
+        if init_tracking:
             # run detection
             det = detector.detect(frame, current_frame)
             print(det)
@@ -102,10 +88,7 @@ if __name__ == '__main__':
                 all_trackers.update({tid: tracker})  # add to trackers' dict
                 tracker_valid.update({tid: True})
 
-            initTracking = False
-            onTracking = True
-
-        elif onTracking:
+        else:
             t0 = time()
             for tracker in [v for (k, v) in all_trackers.items() if tracker_valid.get(k)]:
                 tracker.get_in_queue().put({'cmd': 'update',
@@ -155,7 +138,6 @@ if __name__ == '__main__':
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                                     (255, 0, 0), 1)
             t1 = time()
-            duration = t1 - t0
             duration_smooth = 0.8 * duration_smooth + 0.2 * (t1 - t0)
             fps = 1 / duration_smooth
             print(' fsp = %4f' % fps, end='')
@@ -170,7 +152,7 @@ if __name__ == '__main__':
                 break
 
         if imwrite_enable:
-            cv2.imwrite('output/frame_%06d.jpg' % current_frame, frame)
+            cv2.imwrite('../output/frame_%06d.jpg' % current_frame, frame)
 
         print(' sum_pv = %f' % sum_pv)
 
@@ -187,3 +169,17 @@ if __name__ == '__main__':
 
     print('no_result_count = %d' % no_result_count)
     print('sum_iou = %f' % sum_iou)
+
+
+# ============   Usage: run_fdt.py <filename> <det_result>   ============ #
+
+if __name__ == '__main__':
+    if len(sys.argv) == 1:
+        sys.argv.append(default_input_path)
+        sys.argv.append(default_det_path)
+        sys.argv.append(default_data_format)
+    assert len(sys.argv) == 4
+    if imwrite_enable and not os.path.exists('output'):
+        os.mkdir('output')
+
+    fdt_main(input_path=sys.argv[1], label_file=sys.argv[2], data_format=sys.argv[3])
