@@ -142,7 +142,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
             fps = 1 / duration_smooth
             print(' fsp = %4f' % fps, end='')
             if imshow_enable or imwrite_enable:
-                cv2.putText(frame, 'FPS: ' + str(fps)[:4].strip('.'), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                cv2.putText(frame, 'FPS: %.2f' % fps, (frame.shape[1] - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1,
                             (0, 0, 255), 2)
 
         if imshow_enable:

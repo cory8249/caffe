@@ -12,10 +12,11 @@ from __future__ import print_function
 
 import os
 import time
+import sys
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
+from config import *
 
 import caffe
 from google.protobuf import text_format
@@ -25,9 +26,11 @@ from caffe.proto import caffe_pb2
 if not os.path.isfile('fhog_utils.so'):
     print('numba compile ...')
     import fhog_utils
+
     fhog_utils.cc.compile()
     print('Done. please run again')
     import sys
+
     sys.exit(0)
 
 
@@ -116,8 +119,8 @@ class SSDDetector:
         ret_array = list()
         for i in range(len(top_conf)):
             det = {'label': top_labels[i], 'label_id': top_label_indices[i], 'conf': top_conf[i], 'id': i + 1,
-                   'x1': top_xmin[i], 'y1': top_ymin[i],
-                   'x2': top_xmax[i], 'y2': top_ymax[i]}
+                   'x1': int(top_xmin[i]), 'y1': int(top_ymin[i]),
+                   'x2': int(top_xmax[i]), 'y2': int(top_ymax[i])}
             if ((top_xmax[i] - top_xmin[i]) > 0.5 * image.shape[1]) \
                     or ((top_ymax[i] - top_ymin[i]) > 0.5 * image.shape[0]):
                 pass
@@ -127,70 +130,43 @@ class SSDDetector:
 
     @staticmethod
     def plot(image, detections):
-        plt.rcParams['figure.figsize'] = (10, 10)
-        plt.rcParams['image.interpolation'] = 'nearest'
-        plt.rcParams['image.cmap'] = 'gray'
 
         for det in detections:
 
-            xmin = det.get('x1')
-            ymin = det.get('y1')
-            xmax = det.get('x2')
-            ymax = det.get('y2')
-
-            # * Plot the boxes
-            colors = plt.cm.hsv(np.linspace(0, 1, 81)).tolist()
-            plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-            currentAxis = plt.gca()
-
+            x1 = det.get('x1')
+            y1 = det.get('y1')
+            x2 = det.get('x2')
+            y2 = det.get('y2')
             obj_i = 0
             frame_i = 0
-            width = xmax - xmin + 1
-            height = ymax - ymin + 1
-            score = det.get('conf')
-            top_conf = det.get('conf')
-            label_name = det.get('label')
-            label = det.get('label_id')
-            display_txt = '%s: %.2f' % (label_name, score)
-            # print(display_txt, end=' ')
-
-            # Min Sun dataset format
+            width = x2 - x1 + 1
+            height = y2 - y1 + 1
+            conf = det.get('conf')
+            label = det.get('label')
 
             # skip class not in Min Sun dataset
-            if label_name is not None:
+            if label is not None:
                 obj_i += 1
                 det_format = '%06d\t%d\t"%s"\t%d\t%d\t%d\t%d\t%f' % (
-                    frame_i, obj_i, label_name, xmin, ymin, xmax, ymax, score)
+                    frame_i, obj_i, label, x1, y1, x2, y2, conf)
                 print(det_format)
             else:
                 det_format = '%06d\t%d\t"%s"\t%d\t%d\t%d\t%d\t%f' % (
-                    frame_i, 0, 'Other', xmin, ymin, xmax, ymax, score)
+                    frame_i, 0, 'Other', x1, y1, x2, y2, conf)
                 print(det_format)
 
-            coords = (xmin, ymin), width, height
-            color = colors[label]
-            currentAxis.add_patch(plt.Rectangle(*coords, fill=False, edgecolor=color, linewidth=2))
-            currentAxis.text(xmin, ymin, display_txt, bbox={'facecolor': color, 'alpha': 0.5})
+            if imshow_enable or imwrite_enable:
+                cv2.rectangle(image, (x1, y1), (x2, y2),
+                              (0, 255, 255), 1)
+                cv2.putText(image, '%.2f' % conf, (x1, y1 - 2),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (0, 255, 0), 1)
+                cv2.putText(image, '%d-%s' % (0, label), (x1, y1 + height - 2),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (0, 255, 0), 1)
 
-        print()
-        plt.show()
+        # Plot
+        if imshow_enable:
+            cv2.imshow('ssd detection', image)
+            cv2.waitKey(1)
 
-
-def main():
-    # I/O Path
-    if len(sys.argv) < 2:
-        print('run_ssd.py <input_video_path>')
-        raise Exception
-
-    input_image_path = sys.argv[1]  # file or path both ok
-    frame = cv2.imread(input_image_path)  # BGR
-    assert frame is not None
-
-    ssd_detector = SSDDetector()
-    det = ssd_detector.detect(frame=frame, conf_threshold=0.6)
-    print(det)
-    ssd_detector.plot(frame, det)
-
-
-if __name__ == '__main__':
-    main()
