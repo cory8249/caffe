@@ -17,11 +17,8 @@ import cv2
 import os
 import sys
 
-caffe_root = './'  # this file is expected to be in {caffe_root}
-os.chdir(caffe_root)
-sys.path.insert(0, 'python')
+sys.path.insert(0, 'python')  # to import local caffe python
 
-print(sys.path)
 import caffe
 from google.protobuf import text_format
 from caffe.proto import caffe_pb2

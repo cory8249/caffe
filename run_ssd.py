@@ -7,11 +7,9 @@ from __future__ import print_function
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-import csv
 import cv2
 import os
 import sys
-import shutil
 
 caffe_root = './'  # this file is expected to be in {caffe_root}
 os.chdir(caffe_root)
