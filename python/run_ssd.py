@@ -16,7 +16,8 @@ def ssd_test_image(image_path=None):
     det = ssd_detector.detect(frame=frame, conf_threshold=0.6)
     print(det)
     ssd_detector.plot(frame, det)
-    cv2.waitKey(0)
+    if imshow_enable:
+        cv2.waitKey(0)
 
 
 def ssd_test_video(video_path=None):
