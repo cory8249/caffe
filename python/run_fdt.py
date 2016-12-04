@@ -12,6 +12,26 @@ from util import *
 from detector import Detector
 
 
+class Generator:
+    def __init__(self):
+        self.id = 0
+
+    def get_next_id(self):
+        new_id = self.id
+        self.id += 1
+        return new_id
+
+    def current_id(self):
+        return self.id
+
+
+def terminate_tracker(tracker):
+    tk_process = tracker['process']
+    tk_process.get_in_queue().put({'cmd': 'terminate'})
+    if tk_process.is_alive():
+        tk_process.terminate()
+
+
 def fdt_main(input_path=None, label_file=None, data_format=None):
 
     if input_path.find('mp4') != -1:
@@ -31,11 +51,13 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
         frames_count = len(files_in_dir)
 
     all_trackers = dict()
-    tracker_valid = dict()
     duration_smooth = 0.01
     sum_pv = 0.0
     sum_iou = 0.0
     no_result_count = 0
+    id_generator = Generator()
+    default_tracker_life = 50
+    iou_kill_threshold = 0.6
 
     # ============  main tracking loop  ============ #
     for current_frame in range(frames_count):
@@ -58,49 +80,71 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
         if init_tracking:
             # run detection
-            det = detector.detect(frame, current_frame)
-            print(det)
+            detections = detector.detect(frame, current_frame)
+            print(detections)
 
-            # invalidate old trackers
-            for tid, tracker in all_trackers.items():
-                tracker_valid.update({tid: False})
+            detections_sorted = sorted(detections, key=lambda d: d.get('id'))
+            print(' ---------------- # trackers = %d' % len(detections_sorted), end='')
+            for dt in detections_sorted:
+                x1 = dt.get('x1')
+                y1 = dt.get('y1')
+                w = dt.get('x2') - x1
+                h = dt.get('y2') - y1
+                label = dt.get('label')
+                tid = id_generator.get_next_id()
 
-            all_targets = sorted(det, key=lambda d: d.get('id'))
-            print(' ---------------- # trackers = %d' % len(all_targets), end='')
-            for target in all_targets:
-                # print(target)
-                ix = target.get('x1')
-                iy = target.get('y1')
-                w = target.get('x2') - ix
-                h = target.get('y2') - iy
-                tid = target.get('id')
-                label = target.get('label')
-
-                tracker = all_trackers.get(tid)
-                if tracker is None:
-                    tracker = TrackerMP(hog=True, fixed_window=False, multi_scale=True,
-                                        input_queue=Queue(), output_queue=Queue())
-                    tracker.start()
-                tracker.get_in_queue().put({'cmd': 'init',
-                                            'label': label,
-                                            'roi': [ix, iy, w, h],
-                                            'image': frame})
-                all_trackers.update({tid: tracker})  # add to trackers' dict
-                tracker_valid.update({tid: True})
+                tk_process = TrackerMP(hog=True, fixed_window=False, multi_scale=True,
+                                       input_queue=Queue(), output_queue=Queue())
+                tk_process.start()
+                tk_process.get_in_queue().put({'cmd': 'init',
+                                               'label': label,
+                                               'roi': [x1, y1, w, h],
+                                               'image': frame})
+                all_trackers[tid] = {'process': tk_process, 'life': default_tracker_life,
+                                     'x1': x1, 'y1': y1, 'w': w, 'h': h, 'label': label}  # add to trackers' dict
 
         else:
             t0 = time()
-            for tracker in [v for (k, v) in all_trackers.items() if tracker_valid.get(k)]:
-                tracker.get_in_queue().put({'cmd': 'update',
-                                            'image': frame})
+
+            # check old trackers
+            # * every tracker life - 1
+            # * kill tracker if life == 0
+            # * kill old tracker if IOU between new trackers > threshold
+            sorted_trackers = sorted(all_trackers.items())
+            for tid, tracker in sorted_trackers:
+                life = tracker['life']
+                if life > 0:
+                    tracker['life'] = life - 1
+                else:
+                    print('%d kill itself as life end' % tid)
+                    terminate_tracker(tracker)
+                    del all_trackers[tid]
+                    continue
+
+                roi1 = (tracker['x1'], tracker['y1'], tracker['x1'] + tracker['w'], tracker['y1'] + tracker['h'])
+                for nid in range(tid + 1, id_generator.current_id()):
+                    tnx = all_trackers.get(nid)
+                    if tnx is None:
+                        break
+                    roi2 = (tnx['x1'], tnx['y1'], tnx['x1'] + tnx['w'], tnx['y1'] + tnx['h'])
+                    iou = iou_func(roi1, roi2)
+                    if iou > 0:
+                        print('iou(%d,%d)=%.2f' % (tid, nid, iou))
+                    if iou > iou_kill_threshold:
+                        print('%d killed by %d with iou = %.2f' % (tid, nid, iou))
+                        terminate_tracker(tracker)
+                        del all_trackers[tid]
+                        break
+
+            for tid, tracker in all_trackers.items():
+                tk_process = tracker['process']
+                tk_process.get_in_queue().put({'cmd': 'update', 'image': frame})
+
             # trackers  will calculate in their sub-processes
-            if False:
-                det = detector.detect(frame, current_frame)
-                print(det)
-                ground_truth = sorted(det, key=lambda d: d.get('id'))
-                ground_truth_id = [x.get('id') for x in ground_truth]
-            for (tid, tracker) in [(k, v) for (k, v) in all_trackers.items() if tracker_valid.get(k)]:
-                ret = tracker.get_out_queue().get()
+
+            for tid, tracker in all_trackers.items():
+                tk_process = tracker['process']
+                ret = tk_process.get_out_queue().get()
                 if ret is None:
                     # something wrong with this tracker, pass it
                     print('ret == None, tid = %d' % tid)
@@ -108,20 +152,12 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                     continue
                 roi = map(int, ret.get('roi'))
                 bbox = (roi[0], roi[1], roi[0] + roi[2], roi[1] + roi[3])
+                all_trackers[tid].update({'x1': roi[0], 'y1': roi[1], 'w': roi[2], 'h': roi[3]})
                 pv = ret.get('pv')
                 pv_threshold = 0.25
                 active = pv > pv_threshold
                 sum_pv += pv
                 label = ret.get('label')
-
-                if False and active and tid in ground_truth_id:
-                    # print(target)
-                    ix = ground_truth_id.index(tid)
-                    gt = ground_truth[ix]
-                    gt_bbox = (gt.get('x1'), gt.get('y1'), gt.get('x2'), gt.get('y2'))
-                    iou = iou_func(bbox, gt_bbox)
-                    sum_iou += iou
-                    # print('%d iou = %f' % (tid, iou))
 
                 if imshow_enable or imwrite_enable:
                     if active:
@@ -158,9 +194,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
     # terminate all trackers after all frames are processed
     for tid, tracker in all_trackers.items():
-        tracker.get_in_queue().put({'cmd': 'terminate'})
-        if tracker.is_alive():
-            tracker.terminate()
+        terminate_tracker(tracker)
 
     if input_mode == 'video':
         cap.release()
