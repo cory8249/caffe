@@ -2,14 +2,36 @@ from __future__ import print_function
 
 import cv2
 import sys
+import math
 from time import time
 import os
+import logging
 
 from multiprocessing import Queue
 from tracker_mp import TrackerMP
 from config import *
 from util import *
 from detector import Detector
+
+
+def get_logger():
+    # create logger with 'spam_application'
+    logger = logging.getLogger('fdt')
+    logger.setLevel(logging.DEBUG)
+    # create file handler which logs even debug messages
+    fh = logging.FileHandler('fdt.log')
+    fh.setLevel(logging.DEBUG)
+    # create console handler with a higher log level
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+    # create formatter and add it to the handlers
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+    fh.setFormatter(formatter)
+    ch.setFormatter(formatter)
+    # add the handlers to the logger
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+    return logger
 
 
 class Generator:
@@ -51,17 +73,18 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
         frames_count = len(files_in_dir)
 
     all_trackers = dict()
-    duration_smooth = 0.01
     sum_pv = 0.0
     sum_iou = 0.0
     no_result_count = 0
     id_generator = Generator()
     default_tracker_life = 50
     iou_kill_threshold = 0.6
+    pv_threshold = 0.35
+    logger = get_logger()
 
     # ============  main tracking loop  ============ #
     for current_frame in range(frames_count):
-        t0 = time()
+        begin_time = time()
         if input_mode == 'video':
             ret, frame = cap.read()
         else:
@@ -74,7 +97,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 print(current_frame_path)
             raise IOError
 
-        print('frame %d: ' % current_frame)
+        logger.info('frame %d: ' % current_frame)
 
         # select mode by current frame count (periodic prediction)
         init_tracking = (current_frame % detection_period == 0)
@@ -82,10 +105,10 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
         if init_tracking:
             # run detection
             detections = detector.detect(frame, current_frame)
-            print(detections)
+            logger.debug(detections)
 
             detections_sorted = sorted(detections, key=lambda d: d.get('id'))
-            print(' ---------------- # trackers = %d' % len(detections_sorted), end='')
+            logger.debug(' ---------------- # trackers = %d' % len(detections_sorted))
             for dt in detections_sorted:
                 x1 = dt.get('x1')
                 y1 = dt.get('y1')
@@ -116,7 +139,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 if life > 0:
                     tracker['life'] = life - 1
                 else:
-                    print('%d kill itself as life end' % tid)
+                    logger.debug('%d kill itself as life end' % tid)
                     terminate_tracker(tracker)
                     del all_trackers[tid]
                     continue
@@ -129,9 +152,9 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                     roi2 = (tnx['x1'], tnx['y1'], tnx['x1'] + tnx['w'], tnx['y1'] + tnx['h'])
                     iou = iou_func(roi1, roi2)
                     if iou > 0:
-                        print('iou(%d,%d)=%.2f' % (tid, nid, iou))
+                        logger.debug('iou(%d,%d)=%.2f' % (tid, nid, iou))
                     if iou > iou_kill_threshold:
-                        print('%d killed by %d with iou = %.2f' % (tid, nid, iou))
+                        logger.debug('%d killed by %d with iou = %.2f' % (tid, nid, iou))
                         terminate_tracker(tracker)
                         del all_trackers[tid]
                         break
@@ -147,22 +170,27 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 ret = tk_process.get_out_queue().get()
                 if ret is None:
                     # something wrong with this tracker, pass it
-                    print('ret == None, tid = %d' % tid)
+                    logger.debug('ret == None, tid = %d' % tid)
                     no_result_count += 1
                     continue
                 roi = map(int, ret.get('roi'))
                 bbox = (roi[0], roi[1], roi[0] + roi[2], roi[1] + roi[3])
                 all_trackers[tid].update({'x1': roi[0], 'y1': roi[1], 'w': roi[2], 'h': roi[3]})
                 pv = ret.get('pv')
-                pv_threshold = 0.25
+                logger.debug('tid %d, pv = %.2f' % (tid, pv))
                 active = pv > pv_threshold
                 sum_pv += pv
                 label = ret.get('label')
 
+                life = tracker['life']
+                logger.info('tid %d, life = %d' % (tid, life))
+                color_decay = math.pow((life + 1.0) / default_tracker_life, 2)
+                bbox_color = (0, 255 * color_decay, 0)
+
                 if imshow_enable or imwrite_enable:
                     if active:
                         cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]),
-                                      (0, 255, 255), 1)
+                                      bbox_color, 2)
                         cv2.putText(frame, '%.2f' % pv, (bbox[0], bbox[1] - 2),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                                     (0, 255, 0), 1)
@@ -174,22 +202,22 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                                     (255, 0, 0), 1)
 
+        end_time = time()
+        fps = 1 / (end_time - begin_time)
+        logger.info('fsp = %4f' % fps)
+
         if imshow_enable or imwrite_enable:
-            t1 = time()
-            duration_smooth = 0.8 * duration_smooth + 0.2 * (t1 - t0)
-            fps = 1 / duration_smooth
-            print(' fsp = %4f' % fps, end='')
             cv2.putText(frame, 'FPS: %.2f' % fps, (frame.shape[1] - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1,
                         (0, 0, 255), 2)
+        if imshow_enable:
             cv2.imshow('tracking', frame)
             c = cv2.waitKey(1) & 0xFF
             if c == 27 or c == ord('q'):
                 break
-
         if imwrite_enable:
-            cv2.imwrite('../output/frame_%06d.jpg' % current_frame, frame)
+            cv2.imwrite('../fdt_output/frame_%06d.jpg' % current_frame, frame)
 
-        print(' sum_pv = %f' % sum_pv)
+        logger.debug('sum_pv = %f' % sum_pv)
 
     # terminate all trackers after all frames are processed
     for tid, tracker in all_trackers.items():

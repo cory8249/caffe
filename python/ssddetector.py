@@ -95,7 +95,7 @@ class SSDDetector:
         begin_time = time.time()
         detections = self.net.forward()['detection_out']
         end_time = time.time()
-        print('time %.2f' % (end_time - begin_time))
+        # print('time %.2f' % (end_time - begin_time))
 
         # Parse the outputs.
         det_label = detections[0, 0, :, 1]
