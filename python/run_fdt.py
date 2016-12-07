@@ -215,7 +215,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
             if c == 27 or c == ord('q'):
                 break
         if imwrite_enable:
-            cv2.imwrite('../fdt_output/frame_%06d.jpg' % current_frame, frame)
+            cv2.imwrite(default_output_path + '/frame_%06d.jpg' % current_frame, frame)
 
         logger.debug('sum_pv = %f' % sum_pv)
 
@@ -240,7 +240,7 @@ if __name__ == '__main__':
         sys.argv.append(default_det_path)
         sys.argv.append(default_data_format)
     assert len(sys.argv) == 4
-    if imwrite_enable and not os.path.exists('output'):
-        os.mkdir('output')
+    if imwrite_enable and not os.path.exists(default_output_path):
+        os.mkdir(default_output_path)
 
     fdt_main(input_path=sys.argv[1], label_file=sys.argv[2], data_format=sys.argv[3])
