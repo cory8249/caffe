@@ -42,9 +42,15 @@ class SSDDetector:
         self.labelmap = caffe_pb2.LabelMap()
         text_format.Merge(str(labelmap_file.read()), self.labelmap)
 
+        ssd_model = 512  # SSD300 or SSD512
+
         # * Load the net in the test phase for inference, and configure input preprocessing.
-        model_def = '../models/VGGNet/coco/SSD_300x300/deploy.prototxt'
-        model_weights = '../models/VGGNet/coco/SSD_300x300/VGG_coco_SSD_300x300_iter_240000.caffemodel'
+        if ssd_model == 300:
+            model_def = '../models/VGGNet/coco/SSD_300x300/deploy.prototxt'
+            model_weights = '../models/VGGNet/coco/SSD_300x300/VGG_coco_SSD_300x300_iter_400000.caffemodel'
+        else:
+            model_def = '../models/VGGNet/coco/SSD_512x512/deploy.prototxt'
+            model_weights = '../models/VGGNet/coco/SSD_512x512/VGG_coco_SSD_512x512_iter_360000.caffemodel'
 
         self.net = caffe.Net(model_def,  # defines the structure of the model
                              model_weights,  # contains the trained weights
@@ -61,7 +67,10 @@ class SSDDetector:
 
         # ### 2. SSD detection
         # Load an image. Set net to batch size of 1
-        image_resize = 300
+        if ssd_model == 300:
+            image_resize = 300
+        else:
+            image_resize = 512
         self.net.blobs['data'].reshape(1, 3, image_resize, image_resize)
 
     def get_labelname(self, labels):
@@ -89,7 +98,7 @@ class SSDDetector:
         # convert format
         image = self.rgb_to_caffe_input(frame)
         transformed_image = self.transformer.preprocess('data', image)
-        self.net.blobs['data'].data[...] = transformed_image
+        self.net.blobs['data'].data[...] = [transformed_image]
 
         # Forward pass.
         begin_time = time.time()

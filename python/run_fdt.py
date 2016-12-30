@@ -77,9 +77,9 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
     sum_iou = 0.0
     no_result_count = 0
     id_generator = Generator()
-    default_tracker_life = 50
+    default_tracker_life = 30
     iou_kill_threshold = 0.6
-    pv_threshold = 0.35
+    pv_threshold = 0.25
     logger = get_logger()
 
     # ============  main tracking loop  ============ #
@@ -104,8 +104,11 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
         if init_tracking:
             # run detection
+            t1 = time()
             detections = detector.detect(frame, current_frame)
+            t2 = time()
             logger.debug(detections)
+            logger.info('detection time = %0.4f' % (t2 - t1))
 
             detections_sorted = sorted(detections, key=lambda d: d.get('id'))
             logger.debug(' ---------------- # trackers = %d' % len(detections_sorted))
@@ -115,17 +118,31 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 w = dt.get('x2') - x1
                 h = dt.get('y2') - y1
                 label = dt.get('label')
+                conf = dt.get('conf')
                 tid = id_generator.get_next_id()
 
-                tk_process = TrackerMP(hog=True, fixed_window=False, multi_scale=True,
-                                       input_queue=Queue(), output_queue=Queue())
-                tk_process.start()
-                tk_process.get_in_queue().put({'cmd': 'init',
-                                               'label': label,
-                                               'roi': [x1, y1, w, h],
-                                               'image': frame})
-                all_trackers[tid] = {'process': tk_process, 'life': default_tracker_life,
-                                     'x1': x1, 'y1': y1, 'w': w, 'h': h, 'label': label}  # add to trackers' dict
+                roi = map(int, [x1, y1, w, h])
+                bbox = (roi[0], roi[1], roi[0] + roi[2], roi[1] + roi[3])
+
+                cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]),
+                              (0, 255, 0), 2)
+                cv2.putText(frame, '%.2f' % conf, (bbox[0], bbox[1] - 2),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (0, 255, 0), 1)
+                cv2.putText(frame, '%d-%s' % (tid, label), (bbox[0], bbox[1] + roi[3] - 2),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (0, 255, 0), 1)
+
+                if detection_period != 1:
+                    tk_process = TrackerMP(hog=True, fixed_window=False, multi_scale=True,
+                                           input_queue=Queue(), output_queue=Queue())
+                    tk_process.start()
+                    tk_process.get_in_queue().put({'cmd': 'init',
+                                                   'label': label,
+                                                   'roi': [x1, y1, w, h],
+                                                   'image': frame})
+                    all_trackers[tid] = {'process': tk_process, 'life': default_tracker_life,
+                                         'x1': x1, 'y1': y1, 'w': w, 'h': h, 'label': label}  # add to trackers' dict
 
         else:
 
@@ -183,7 +200,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 label = ret.get('label')
 
                 life = tracker['life']
-                logger.info('tid %d, life = %d' % (tid, life))
+                logger.debug('tid %d, life = %d' % (tid, life))
                 color_decay = math.pow((life + 1.0) / default_tracker_life, 2)
                 bbox_color = (0, 255 * color_decay, 0)
 
@@ -198,9 +215,10 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                                     (0, 255, 0), 1)
                     else:
-                        cv2.putText(frame, '%.2f' % pv, (bbox[0], bbox[1]),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                                    (255, 0, 0), 1)
+                        pass
+                        #cv2.putText(frame, '%.2f' % pv, (bbox[0], bbox[1]),
+                        #            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                        #            (255, 0, 0), 1)
 
         end_time = time()
         fps = 1 / (end_time - begin_time)
