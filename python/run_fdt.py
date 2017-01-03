@@ -1,6 +1,7 @@
 from __future__ import print_function
 import argparse
 import cv2
+import numpy as np
 import sys
 import math
 from time import time
@@ -65,6 +66,18 @@ def terminate_tracker(tracker):
         tk_process.terminate()
 
 
+def add_padding(frame, padding_size):
+    npad = ((padding_size, padding_size), (0, 0), (0, 0))
+    ret = np.pad(frame, pad_width=npad, mode='constant', constant_values=0)
+    ret = ret.astype(np.uint8)
+    return ret
+
+
+def remove_padding(frame, size):
+    ret = frame[size:-size, :, :]
+    return ret
+
+
 def fdt_main(input_path=None, label_file=None, data_format=None):
 
     if input_path.find('mp4') != -1:
@@ -109,16 +122,27 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 print(current_frame_path)
             raise IOError
 
+        frame_height = frame.shape[0]
+        frame_width = frame.shape[1]
+        padding_size = (frame_width - frame_height) / 2
         logger.info('frame %d: ' % current_frame)
 
         # select mode by current frame count (periodic prediction)
         init_tracking = (current_frame % detection_period == 0)
 
         if init_tracking:
+
+            if padding_enable:
+                frame = add_padding(frame, padding_size)
+
             # run detection
             t1 = time()
             detections = detector.detect(frame, current_frame)
             t2 = time()
+
+            if padding_enable:
+                frame = remove_padding(frame, padding_size)
+
             logger.debug(detections)
             logger.info('detection time = %0.4f' % (t2 - t1))
 
@@ -127,15 +151,18 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
             for dt in detections_sorted:
                 x1 = dt.get('x1')
                 y1 = dt.get('y1')
-                w = dt.get('x2') - x1
-                h = dt.get('y2') - y1
+                x2 = dt.get('x2')
+                y2 = dt.get('y2')
+                if padding_enable:
+                    y1 -= padding_size
+                    y2 -= padding_size
+                w = x2 - x1
+                h = y2 - y1
                 label = dt.get('label')
                 conf = dt.get('conf')
                 tid = id_generator.get_next_id()
-
                 roi = map(int, [x1, y1, w, h])
                 bbox = (roi[0], roi[1], roi[0] + roi[2], roi[1] + roi[3])
-
                 cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]),
                               (0, 255, 0), 2)
                 cv2.putText(frame, '%.2f' % conf, (bbox[0], bbox[1] - 2),

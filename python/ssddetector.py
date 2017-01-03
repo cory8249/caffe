@@ -97,6 +97,7 @@ class SSDDetector:
     def detect(self, frame=None, conf_threshold=0.5):
         # convert format
         image = self.rgb_to_caffe_input(frame)
+
         transformed_image = self.transformer.preprocess('data', image)
         self.net.blobs['data'].data[...] = [transformed_image]
 
