@@ -1,5 +1,5 @@
 from __future__ import print_function
-
+import argparse
 import cv2
 import sys
 import math
@@ -12,6 +12,17 @@ from tracker_mp import TrackerMP
 from config import *
 from util import *
 from detector import Detector
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", type=str, default=default_input_path,
+                        help="input path of video")
+    parser.add_argument("--label_file", type=str, default=default_det_path,
+                        help="input path of detection label file")
+    parser.add_argument("--data_format", type=str, default=default_data_format,
+                        help="input data format")
+    return parser.parse_args()
 
 
 def get_logger():
@@ -83,6 +94,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
     logger = get_logger()
 
     # ============  main tracking loop  ============ #
+    loop_begin = time()
     for current_frame in range(frames_count):
         begin_time = time()
         if input_mode == 'video':
@@ -201,7 +213,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
                 life = tracker['life']
                 logger.debug('tid %d, life = %d' % (tid, life))
-                color_decay = math.pow((life + 1.0) / default_tracker_life, 2)
+                color_decay = max(math.pow((life + 1.0) / default_tracker_life, 1.5), 0.3)
                 bbox_color = (0, 255 * color_decay, 0)
 
                 if imshow_enable or imwrite_enable:
@@ -246,19 +258,21 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
     if imshow_enable:
         cv2.destroyAllWindows()
 
-    print('no_result_count = %d' % no_result_count)
-    print('sum_iou = %f' % sum_iou)
+    print('no_result_count = {:d}'.format(no_result_count))
+    print('sum_iou = {:f}'.format(sum_iou))
+
+    total_time = time() - loop_begin
+    avg_fps = frames_count / total_time
+    print('total time = {:.4f} second(s)'.format(total_time))
+    print('avg fsp = {:.4f} fps'.format(avg_fps))
 
 
 # ============   Usage: run_fdt.py <filename> <det_result>   ============ #
 
 if __name__ == '__main__':
-    if len(sys.argv) == 1:
-        sys.argv.append(default_input_path)
-        sys.argv.append(default_det_path)
-        sys.argv.append(default_data_format)
-    assert len(sys.argv) == 4
+    args = parse_args()
+
     if imwrite_enable and not os.path.exists(default_output_path):
         os.mkdir(default_output_path)
 
-    fdt_main(input_path=sys.argv[1], label_file=sys.argv[2], data_format=sys.argv[3])
+    fdt_main(input_path=args.input, label_file=args.label_file, data_format=args.data_format)

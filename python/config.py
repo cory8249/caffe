@@ -1,9 +1,9 @@
-detection_period = 20
+detection_period = 30
 imshow_enable = True
 imwrite_enable = True
 
-#default_input_path = '/home/cory/cedl/KITTI/videos/0000.mp4'
-default_input_path = '/home/cory/cedl/vid/videos/vid01.mp4'
+default_input_path = '/home/cory/cedl/KITTI/videos/0000.mp4'
+#default_input_path = '/home/cory/cedl/vid/videos/vid04.mp4'
 default_det_path = '/home/cory/cedl/vid/det/vid01_det.txt'
 default_data_format = 'vid'
 default_output_path = '../fdt_output'

@@ -13,8 +13,11 @@ def ssd_test_image(image_path=None):
     assert frame is not None
 
     ssd_detector = SSDDetector()
+    t1 = time.time()
     det = ssd_detector.detect(frame=frame, conf_threshold=0.6)
+    t2 = time.time()
     print(det)
+    print('%.4f seconds' % (t2 - t1))
     ssd_detector.plot(frame, det)
     if imshow_enable:
         cv2.waitKey(0)

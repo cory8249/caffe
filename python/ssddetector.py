@@ -133,6 +133,8 @@ class SSDDetector:
             if ((top_xmax[i] - top_xmin[i]) > 0.5 * image.shape[1]) \
                     or ((top_ymax[i] - top_ymin[i]) > 0.5 * image.shape[0]):
                 pass
+            elif top_labels[i] is None:
+                pass
             else:
                 ret_array.append(det)
         return ret_array
