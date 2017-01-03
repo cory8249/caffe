@@ -78,6 +78,13 @@ def remove_padding(frame, size):
     return ret
 
 
+bbox_file = open('bbox.txt', 'w')
+
+
+def dump_roi_to_file(frame_id, roi):
+    bbox_file.write('%d,%d,%d,%d,%d\n' % (frame_id, roi[0], roi[1], roi[2], roi[3]))
+
+
 def fdt_main(input_path=None, label_file=None, data_format=None):
 
     if input_path.find('mp4') != -1:
@@ -98,7 +105,6 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
     all_trackers = dict()
     sum_pv = 0.0
-    sum_iou = 0.0
     no_result_count = 0
     id_generator = Generator()
     default_tracker_life = 30
@@ -156,6 +162,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 if padding_enable:
                     y1 -= padding_size
                     y2 -= padding_size
+                dump_roi_to_file(current_frame,  (x1, y1, x2, y2))
                 w = x2 - x1
                 h = y2 - y1
                 label = dt.get('label')
@@ -240,11 +247,12 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
                 life = tracker['life']
                 logger.debug('tid %d, life = %d' % (tid, life))
-                color_decay = max(math.pow((life + 1.0) / default_tracker_life, 1.5), 0.3)
+                color_decay = max(math.pow((life + 1.0) / default_tracker_life, 1.2), 0.4)
                 bbox_color = (0, 255 * color_decay, 0)
 
                 if imshow_enable or imwrite_enable:
                     if active:
+                        dump_roi_to_file(current_frame, bbox)
                         cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]),
                                       bbox_color, 2)
                         cv2.putText(frame, '%.2f' % pv, (bbox[0], bbox[1] - 2),
@@ -284,9 +292,6 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
         cap.release()
     if imshow_enable:
         cv2.destroyAllWindows()
-
-    print('no_result_count = {:d}'.format(no_result_count))
-    print('sum_iou = {:f}'.format(sum_iou))
 
     total_time = time() - loop_begin
     avg_fps = frames_count / total_time
