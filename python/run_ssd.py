@@ -27,6 +27,7 @@ def ssd_test_video(video_path=None):
     # Open video file as cap
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
+        print('opencv cannot open video_path ' + video_path)
         raise IOError
 
     ssd_detector = SSDDetector()
