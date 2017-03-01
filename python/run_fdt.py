@@ -7,6 +7,8 @@ import math
 from time import time
 import os
 import logging
+import json
+from collections import OrderedDict
 
 from multiprocessing import Queue
 from tracker_mp import TrackerMP
@@ -86,7 +88,6 @@ def dump_roi_to_file(frame_id, roi):
 
 
 def fdt_main(input_path=None, label_file=None, data_format=None):
-
     if input_path.find('mp4') != -1:
         input_mode = 'video'
     else:
@@ -114,6 +115,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
     # ============  main tracking loop  ============ #
     loop_begin = time()
+    all_frame_objectes = list()
     for current_frame in range(frames_count):
         begin_time = time()
         if input_mode == 'video':
@@ -135,6 +137,9 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
         # select mode by current frame count (periodic prediction)
         init_tracking = (current_frame % detection_period == 0)
+
+        # all objects (w/ type, bbox) in this frame ( to display )
+        frame_objects = []
 
         if init_tracking:
 
@@ -162,7 +167,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 if padding_enable:
                     y1 -= padding_size
                     y2 -= padding_size
-                dump_roi_to_file(current_frame,  (x1, y1, x2, y2))
+                dump_roi_to_file(current_frame, (x1, y1, x2, y2))
                 w = x2 - x1
                 h = y2 - y1
                 label = dt.get('label')
@@ -170,6 +175,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 tid = id_generator.get_next_id()
                 roi = map(int, [x1, y1, w, h])
                 bbox = (roi[0], roi[1], roi[0] + roi[2], roi[1] + roi[3])
+                frame_objects.append({'label': label, 'bbox': bbox})
                 cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]),
                               (0, 255, 0), 2)
                 cv2.putText(frame, '%.2f' % conf, (bbox[0], bbox[1] - 2),
@@ -252,6 +258,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
                 if imshow_enable or imwrite_enable:
                     if active:
+                        frame_objects.append({'label': label, 'bbox': bbox})
                         dump_roi_to_file(current_frame, bbox)
                         cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]),
                                       bbox_color, 2)
@@ -263,13 +270,16 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                                     (0, 255, 0), 1)
                     else:
                         pass
-                        #cv2.putText(frame, '%.2f' % pv, (bbox[0], bbox[1]),
+                        # cv2.putText(frame, '%.2f' % pv, (bbox[0], bbox[1]),
                         #            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                         #            (255, 0, 0), 1)
 
         end_time = time()
         fps = 1 / (end_time - begin_time)
         logger.info('fsp = %4f' % fps)
+        logger.info('objects = ' + str(frame_objects))
+
+        all_frame_objectes.append({'frame': current_frame, 'object': frame_objects})
 
         if imshow_enable or imwrite_enable:
             cv2.putText(frame, 'FPS: %.2f' % fps, (frame.shape[1] - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1,
@@ -297,6 +307,17 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
     avg_fps = frames_count / total_time
     print('total time = {:.4f} second(s)'.format(total_time))
     print('avg fsp = {:.4f} fps'.format(avg_fps))
+
+    with open('objects.json', mode='w') as json_file:
+        json.dump(
+            obj=OrderedDict([
+                ('width', frame_width),
+                ('height', frame_height),
+                ('format', 'coco'),
+                ('total_frame', len(all_frame_objectes)),
+                ('frame_data', all_frame_objectes)]),
+            fp=json_file,
+            indent=4)
 
 
 # ============   Usage: run_fdt.py <filename> <det_result>   ============ #
