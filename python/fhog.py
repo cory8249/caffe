@@ -7,7 +7,6 @@ NUM_SECTOR = 9
 FLT_EPSILON = 1e-07
 
 
-
 def getFeatureMaps(image, k, mapp):
 	kernel = np.array([[-1.,  0., 1.]], np.float32)
 

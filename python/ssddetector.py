@@ -16,7 +16,7 @@ import sys
 
 import cv2
 import numpy as np
-from config import *
+import config
 
 import caffe
 from google.protobuf import text_format
@@ -42,7 +42,7 @@ class SSDDetector:
         self.labelmap = caffe_pb2.LabelMap()
         text_format.Merge(str(labelmap_file.read()), self.labelmap)
 
-        ssd_model = 512  # SSD300 or SSD512
+        ssd_model = config.ssd_model  # SSD300 or SSD512
 
         # * Load the net in the test phase for inference, and configure input preprocessing.
         if ssd_model == 300:
@@ -94,7 +94,7 @@ class SSDDetector:
         img = frame / 255.0
         return img[:, :, (2, 1, 0)]
 
-    def detect(self, frame=None, conf_threshold=0.5):
+    def detect(self, frame=None, conf_threshold=0.3):
         # convert format
         image = self.rgb_to_caffe_input(frame)
 
@@ -105,7 +105,7 @@ class SSDDetector:
         begin_time = time.time()
         detections = self.net.forward()['detection_out']
         end_time = time.time()
-        # print('time %.2f' % (end_time - begin_time))
+        print('time %.3f' % (end_time - begin_time))
 
         # Parse the outputs.
         det_label = detections[0, 0, :, 1]
@@ -167,7 +167,7 @@ class SSDDetector:
                     frame_i, 0, 'Other', x1, y1, x2, y2, conf)
                 print(det_format)
 
-            if imshow_enable or imwrite_enable:
+            if config.imshow_enable or config.imwrite_enable:
                 cv2.rectangle(image, (x1, y1), (x2, y2),
                               (0, 255, 255), 1)
                 cv2.putText(image, '%.2f' % conf, (x1, y1 - 2),
@@ -178,7 +178,7 @@ class SSDDetector:
                             (0, 255, 0), 1)
 
         # Plot
-        if imshow_enable:
+        if config.imshow_enable:
             cv2.imshow('ssd detection', image)
             cv2.waitKey(1)
 

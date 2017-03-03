@@ -99,7 +99,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
     if input_mode == 'video':
         cap = cv2.VideoCapture(input_path)
         assert cap.isOpened()
-        frames_count = int(cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
+        frames_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     else:
         files_in_dir = sorted([f for f in os.listdir(input_path) if os.path.isfile(os.path.join(input_path, f))])
         frames_count = len(files_in_dir)
@@ -115,7 +115,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
     # ============  main tracking loop  ============ #
     loop_begin = time()
-    all_frame_objectes = list()
+    all_frame_objects = list()
     for current_frame in range(frames_count):
         begin_time = time()
         if input_mode == 'video':
@@ -175,7 +175,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 tid = id_generator.get_next_id()
                 roi = map(int, [x1, y1, w, h])
                 bbox = (roi[0], roi[1], roi[0] + roi[2], roi[1] + roi[3])
-                frame_objects.append({'label': label, 'bbox': bbox})
+                frame_objects.append({'label': label, 'conf': conf, 'bbox': bbox})
                 cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]),
                               (0, 255, 0), 2)
                 cv2.putText(frame, '%.2f' % conf, (bbox[0], bbox[1] - 2),
@@ -191,6 +191,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                     tk_process.start()
                     tk_process.get_in_queue().put({'cmd': 'init',
                                                    'label': label,
+                                                   'conf': conf,
                                                    'roi': [x1, y1, w, h],
                                                    'image': frame})
                     all_trackers[tid] = {'process': tk_process, 'life': default_tracker_life,
@@ -250,6 +251,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
                 active = pv > pv_threshold
                 sum_pv += pv
                 label = ret.get('label')
+                conf = ret.get('conf')
 
                 life = tracker['life']
                 logger.debug('tid %d, life = %d' % (tid, life))
@@ -258,7 +260,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
 
                 if imshow_enable or imwrite_enable:
                     if active:
-                        frame_objects.append({'label': label, 'bbox': bbox})
+                        frame_objects.append({'label': label, 'conf': pv, 'bbox': bbox})
                         dump_roi_to_file(current_frame, bbox)
                         cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]),
                                       bbox_color, 2)
@@ -279,7 +281,7 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
         logger.info('fsp = %4f' % fps)
         logger.info('objects = ' + str(frame_objects))
 
-        all_frame_objectes.append({'frame': current_frame, 'object': frame_objects})
+        all_frame_objects.append({'frame': current_frame, 'object': frame_objects})
 
         if imshow_enable or imwrite_enable:
             cv2.putText(frame, 'FPS: %.2f' % fps, (frame.shape[1] - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 1,
@@ -308,24 +310,52 @@ def fdt_main(input_path=None, label_file=None, data_format=None):
     print('total time = {:.4f} second(s)'.format(total_time))
     print('avg fsp = {:.4f} fps'.format(avg_fps))
 
+    # float to string
+    for frame_obj in all_frame_objects:
+        for obj in frame_obj['object']:
+            obj['conf'] = '{:.4f}'.format(obj['conf'])
+
     with open('objects.json', mode='w') as json_file:
         json.dump(
             obj=OrderedDict([
                 ('width', frame_width),
                 ('height', frame_height),
                 ('format', 'coco'),
-                ('total_frame', len(all_frame_objectes)),
-                ('frame_data', all_frame_objectes)]),
+                ('total_frame', len(all_frame_objects)),
+                ('frame_data', all_frame_objects)]),
             fp=json_file,
             indent=4)
+
+# KITTI format
+# frame  track_id  label  0  0  x1  y1  x2  y2  0  0  0  0  0  0  conf
+
+
+def json_to_kitti(json_in_filename, kitti_out_filename):
+    kitti_outfile = open(name=kitti_out_filename, mode='w')
+    with open(json_in_filename, mode='r') as json_file:
+        objects = json.load(fp=json_file)
+        for data in objects['frame_data']:
+            frame = data['frame']
+            for obj in data['object']:
+                bbox = obj['bbox']
+                label = obj['label']
+                conf = obj['conf']
+                if label == 'person':
+                    label = 'pedestrian'
+                line_str = '{:d} -1 {:s} 0 0 0 {:d} {:d} {:d} {:d} 0 0 0 0 0 0 {:s}'\
+                    .format(frame, label, bbox[0], bbox[1], bbox[2], bbox[3], conf)
+                # print(line_str)
+                kitti_outfile.write(line_str)
+                kitti_outfile.write('\n')
 
 
 # ============   Usage: run_fdt.py <filename> <det_result>   ============ #
 
+
 if __name__ == '__main__':
     args = parse_args()
-
     if imwrite_enable and not os.path.exists(default_output_path):
         os.mkdir(default_output_path)
 
     fdt_main(input_path=args.input, label_file=args.label_file, data_format=args.data_format)
+    json_to_kitti('objects.json', 'kitti_objects.txt')
